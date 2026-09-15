@@ -1,0 +1,31 @@
+name: SCIS CatBoost Full Test
+on:
+  push:
+    branches: [scis-energy-experiment]
+    paths:
+      - 'scis_catboost_fulltest.py'
+      - '.github/workflows/scis-catboost-fulltest.yml'
+  workflow_dispatch:
+jobs:
+  fulltest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: scis-energy-experiment
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Fetch CityLearn
+        run: git clone --depth 1 https://github.com/citylearn-project/CityLearn.git
+      - name: Run CatBoost full-test analysis
+        run: python scis_catboost_fulltest.py | tee catboost_fulltest.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scis-catboost-fulltest-results
+          path: |
+            catboost_fulltest_results/
+            catboost_fulltest.log
+          retention-days: 30
