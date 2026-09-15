@@ -1,0 +1,72 @@
+name: SCIS Energy Experiment
+
+on:
+  push:
+    branches: [scis-energy-experiment]
+  workflow_dispatch:
+
+jobs:
+  run-experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Checkout experiment branch
+        uses: actions/checkout@v4
+        with:
+          ref: scis-energy-experiment
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-scis.txt
+
+      - name: Fetch official CityLearn repository
+        run: |
+          git clone --depth 1 https://github.com/citylearn-project/CityLearn.git
+          test -f CityLearn/data/datasets/citylearn_challenge_2022_phase_all/schema.json
+
+      - name: Fetch BDG2 electricity data through Git LFS
+        continue-on-error: true
+        run: |
+          git lfs install
+          git clone --depth 1 --filter=blob:none --no-checkout https://github.com/buds-lab/building-data-genome-project-2.git bdg2
+          cd bdg2
+          git sparse-checkout init --no-cone
+          printf 'data/meters/cleaned/electricity_cleaned.csv\n' > .git/info/sparse-checkout
+          git checkout master
+          git lfs pull --include='data/meters/cleaned/electricity_cleaned.csv' --exclude=''
+          ls -lh data/meters/cleaned/electricity_cleaned.csv
+          cd ..
+
+      - name: Run full experiment
+        env:
+          TF_NUM_INTEROP_THREADS: '2'
+          TF_NUM_INTRAOP_THREADS: '2'
+          OMP_NUM_THREADS: '2'
+        run: |
+          python scis_experiment.py | tee experiment.log
+
+      - name: Record reproducibility metadata
+        if: always()
+        run: |
+          python --version > runtime.txt
+          pip freeze >> runtime.txt
+          git -C CityLearn rev-parse HEAD >> runtime.txt || true
+          git -C bdg2 rev-parse HEAD >> runtime.txt || true
+
+      - name: Upload experiment outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scis-energy-results
+          path: |
+            results/
+            experiment.log
+            runtime.txt
+          retention-days: 30
