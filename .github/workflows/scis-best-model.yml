@@ -1,0 +1,48 @@
+name: SCIS Best Model Analysis
+
+on:
+  push:
+    branches: [scis-energy-experiment]
+    paths:
+      - 'scis_best_model.py'
+      - '.github/workflows/scis-best-model.yml'
+  workflow_dispatch:
+
+jobs:
+  selected-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: scis-energy-experiment
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Fetch CityLearn
+        run: git clone --depth 1 https://github.com/citylearn-project/CityLearn.git
+      - name: Fetch BDG2 electricity data
+        continue-on-error: true
+        run: |
+          git lfs install
+          git clone --depth 1 --filter=blob:none --no-checkout https://github.com/buds-lab/building-data-genome-project-2.git bdg2
+          cd bdg2
+          git sparse-checkout init --no-cone
+          printf 'data/meters/cleaned/electricity_cleaned.csv\n' > .git/info/sparse-checkout
+          git checkout master
+          git lfs pull --include='data/meters/cleaned/electricity_cleaned.csv' --exclude=''
+          cd ..
+      - name: Run selected-model analysis
+        run: python scis_best_model.py | tee best_model.log
+      - name: Upload selected-model outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scis-best-model-results
+          path: |
+            best_results/
+            best_model.log
+          retention-days: 30
